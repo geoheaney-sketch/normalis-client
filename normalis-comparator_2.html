@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Normalis — Comparator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg1:#0a0d12; --bg2:#111520; --bg3:#1a1f2e; --bg4:#222840;
+    --green:#22c55e; --green-dim:rgba(34,197,94,.12);
+    --amber:#f59e0b; --amber-dim:rgba(245,158,11,.12);
+    --red:#ef4444;   --red-dim:rgba(239,68,68,.12);
+    --blue:#60a5fa;  --orange:#fb923c;
+    --slate:#64748b; --text:#e2e8f0; --muted:#64748b; --border:#1e2a3a;
+    --mono:'DM Mono',monospace;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg1); color:var(--text); font-family:'DM Sans',sans-serif; min-height:100vh; }
+
+  header {
+    padding:32px 24px 20px;
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:flex-end; justify-content:space-between;
+  }
+  .logo { display:flex; align-items:center; gap:10px; }
+  .logo-box {
+    width:28px; height:28px; border:1.5px solid var(--blue);
+    border-radius:6px; display:flex; align-items:center; justify-content:center;
+  }
+  .logo-box svg { width:13px; height:13px; }
+  .logo-title { font-family:var(--mono); font-size:11px; letter-spacing:.12em; color:var(--muted); }
+  header h1 { font-size:18px; font-weight:300; letter-spacing:-.02em; }
+  header p  { font-size:12px; color:var(--muted); margin-top:2px; }
+
+  .main { display:grid; grid-template-columns:320px 1fr; gap:0; min-height:calc(100vh - 89px); }
+
+  /* ── LEFT PANEL ── */
+  .panel {
+    border-right:1px solid var(--border);
+    padding:20px 18px;
+    display:flex; flex-direction:column; gap:16px;
+  }
+  .section-title {
+    font-family:var(--mono); font-size:10px; letter-spacing:.1em;
+    color:var(--muted); text-transform:uppercase; margin-bottom:4px;
+  }
+  .drop-zone {
+    border:1.5px dashed var(--border); border-radius:8px;
+    padding:18px 12px; text-align:center; cursor:pointer;
+    transition:border-color .2s, background .2s;
+    position:relative;
+  }
+  .drop-zone:hover, .drop-zone.drag { border-color:var(--blue); background:rgba(96,165,250,.05); }
+  .drop-zone input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .drop-zone .dz-icon { font-size:22px; margin-bottom:6px; }
+  .drop-zone .dz-label { font-size:12px; color:var(--muted); }
+  .drop-zone .dz-sub   { font-size:11px; color:var(--slate); margin-top:3px; }
+  .drop-zone.loaded { border-color:var(--green); border-style:solid; }
+  .drop-zone.loaded .dz-label { color:var(--green); }
+
+  .thumb { width:100%; border-radius:6px; object-fit:cover; max-height:160px; display:none; margin-top:8px; }
+  .thumb.show { display:block; }
+
+  .option-row {
+    display:flex; flex-direction:column; gap:6px;
+  }
+  .option-row label { font-size:12px; color:var(--muted); }
+  .option-row select, .option-row input[type=text] {
+    background:var(--bg3); border:1px solid var(--border); border-radius:6px;
+    color:var(--text); font-family:'DM Sans',sans-serif; font-size:13px;
+    padding:7px 10px; width:100%; outline:none;
+  }
+  .option-row select:focus, .option-row input[type=text]:focus { border-color:var(--blue); }
+
+  .run-btn {
+    background:var(--blue); color:#0a0d12; border:none; border-radius:8px;
+    font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500;
+    padding:11px; cursor:pointer; transition:opacity .2s; letter-spacing:.01em;
+  }
+  .run-btn:hover { opacity:.88; }
+  .run-btn:disabled { opacity:.35; cursor:not-allowed; }
+
+  .status-row {
+    display:flex; align-items:center; gap:8px;
+    font-size:12px; color:var(--muted); font-family:var(--mono);
+  }
+  .s-dot { width:7px; height:7px; border-radius:50%; background:var(--slate); flex-shrink:0; }
+  .s-dot.running { background:var(--amber); animation:pulse 1s infinite; }
+  .s-dot.done    { background:var(--green); }
+  .s-dot.err     { background:var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* ── RIGHT PANEL ── */
+  .results { padding:24px; overflow-y:auto; }
+
+  .results-header {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:20px;
+  }
+  .results-header h2 { font-size:16px; font-weight:400; }
+
+  .legend {
+    display:flex; gap:12px; font-family:var(--mono); font-size:10px;
+  }
+  .leg { display:flex; align-items:center; gap:5px; }
+  .leg-dot { width:8px; height:8px; border-radius:2px; }
+
+  .empty-state {
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-height:300px; gap:10px; color:var(--muted);
+  }
+  .empty-state svg { opacity:.25; }
+  .empty-state p { font-size:13px; }
+
+  /* ── TABLE ── */
+  .diff-table { width:100%; border-collapse:collapse; }
+  .diff-table th {
+    font-family:var(--mono); font-size:10px; letter-spacing:.08em;
+    color:var(--muted); text-align:left; padding:0 10px 8px;
+    border-bottom:1px solid var(--border);
+  }
+  .diff-table th.center { text-align:center; }
+  .diff-table td {
+    padding:9px 10px; font-size:13px;
+    border-bottom:1px solid rgba(30,42,58,.6);
+    vertical-align:middle;
+  }
+  .diff-table tr:last-child td { border-bottom:none; }
+  .diff-table tr:hover td { background:rgba(255,255,255,.02); }
+
+  .check-name { font-weight:500; font-size:13px; }
+  .check-view {
+    font-family:var(--mono); font-size:10px; color:var(--muted);
+    margin-top:2px;
+  }
+
+  .val { font-family:var(--mono); font-size:12px; }
+  .val.none { color:var(--slate); font-style:italic; }
+
+  .status-pill {
+    display:inline-block; border-radius:4px; padding:2px 7px;
+    font-family:var(--mono); font-size:10px; font-weight:500; letter-spacing:.04em;
+    text-transform:uppercase;
+  }
+  .pill-pass { background:var(--green-dim); color:var(--green); }
+  .pill-warn { background:var(--amber-dim); color:var(--amber); }
+  .pill-fail { background:var(--red-dim); color:var(--red); }
+  .pill-none { background:rgba(100,116,139,.1); color:var(--slate); }
+
+  /* diff cell */
+  .diff-cell { text-align:center; }
+  .diff-badge {
+    display:inline-flex; align-items:center; justify-content:center;
+    border-radius:6px; padding:3px 10px; font-family:var(--mono);
+    font-size:11px; font-weight:500; min-width:60px;
+  }
+  .diff-agree  { background:var(--green-dim); color:var(--green); }
+  .diff-close  { background:rgba(96,165,250,.12); color:var(--blue); }
+  .diff-off    { background:var(--amber-dim); color:var(--amber); }
+  .diff-far    { background:var(--red-dim); color:var(--red); }
+  .diff-na     { background:rgba(100,116,139,.08); color:var(--slate); font-style:italic; }
+
+  .section-head {
+    font-family:var(--mono); font-size:10px; letter-spacing:.1em;
+    color:var(--muted); text-transform:uppercase;
+    padding:12px 10px 6px; background:var(--bg2);
+    border-bottom:1px solid var(--border);
+    border-top:1px solid var(--border);
+  }
+  .section-head:first-child { border-top:none; }
+
+  /* summary bar */
+  .summary-bar {
+    display:grid; grid-template-columns:repeat(4,1fr); gap:10px;
+    margin-bottom:20px;
+  }
+  .sum-card {
+    background:var(--bg2); border:1px solid var(--border); border-radius:8px;
+    padding:12px 14px;
+  }
+  .sum-card .sum-n  { font-size:24px; font-weight:500; margin-bottom:2px; }
+  .sum-card .sum-lbl { font-size:11px; color:var(--muted); font-family:var(--mono); }
+  .sum-card.c-agree .sum-n  { color:var(--green); }
+  .sum-card.c-close .sum-n  { color:var(--blue); }
+  .sum-card.c-off   .sum-n  { color:var(--amber); }
+  .sum-card.c-far   .sum-n  { color:var(--red); }
+
+  .api-only {
+    font-family:var(--mono); font-size:10px; color:var(--muted);
+    padding:7px 10px; border-bottom:1px solid rgba(30,42,58,.4);
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .api-only:hover { background:rgba(255,255,255,.02); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">
+      <div class="logo-box">
+        <svg viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M7 1L13 4V10L7 13L1 10V4L7 1Z" stroke="#60a5fa" stroke-width="1.2" stroke-linejoin="round"/>
+          <circle cx="7" cy="7" r="2" fill="#60a5fa"/>
+        </svg>
+      </div>
+      <span class="logo-title">NORMALIS · COMPARATOR</span>
+    </div>
+    <h1>API vs Practice App</h1>
+    <p>Upload a photo, run both engines, diff the results</p>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- LEFT -->
+  <div class="panel">
+
+    <div>
+      <div class="section-title">Face-on photo</div>
+      <div class="drop-zone" id="dz-fo" ondragover="doDrag(event,'fo')" ondragleave="undrag('fo')" ondrop="doDrop(event,'fo')">
+        <input type="file" accept="image/*" onchange="loadFile(event,'fo')">
+        <div class="dz-icon">📷</div>
+        <div class="dz-label" id="dz-fo-lbl">Drop or click to upload</div>
+        <div class="dz-sub">Face-on view</div>
+      </div>
+      <img class="thumb" id="thumb-fo">
+    </div>
+
+    <div>
+      <div class="section-title">Down-the-line photo (optional)</div>
+      <div class="drop-zone" id="dz-dtl" ondragover="doDrag(event,'dtl')" ondragleave="undrag('dtl')" ondrop="doDrop(event,'dtl')">
+        <input type="file" accept="image/*" onchange="loadFile(event,'dtl')">
+        <div class="dz-icon">📷</div>
+        <div class="dz-label" id="dz-dtl-lbl">Drop or click to upload</div>
+        <div class="dz-sub">Down-the-line view</div>
+      </div>
+      <img class="thumb" id="thumb-dtl">
+    </div>
+
+    <div class="option-row">
+      <label>Club</label>
+      <select id="sel-club">
+        <option value="infer">Infer from image</option>
+        <option value="driver">Driver</option>
+        <option value="fairway">Fairway wood</option>
+        <option value="hybrid">Hybrid</option>
+        <option value="long_iron">Long iron (3–4i)</option>
+        <option value="mid_iron">Mid iron (5–7i)</option>
+        <option value="short_iron">Short iron (8–9i)</option>
+        <option value="wedge">Wedge</option>
+      </select>
+    </div>
+
+    <div class="option-row">
+      <label>Handedness</label>
+      <select id="sel-hand">
+        <option value="right">Right-handed</option>
+        <option value="left">Left-handed</option>
+      </select>
+    </div>
+
+    <div class="option-row">
+      <label>API URL</label>
+      <input type="text" id="api-url" value="https://normalis-api-production.up.railway.app">
+    </div>
+
+    <button class="run-btn" id="run-btn" disabled onclick="runComparison()">Run comparison</button>
+
+    <div class="status-row">
+      <div class="s-dot" id="s-dot"></div>
+      <span id="s-txt">Upload a face-on photo to start</span>
+    </div>
+
+  </div>
+
+  <!-- RIGHT -->
+  <div class="results" id="results">
+    <div class="empty-state">
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+        <rect x="6" y="6" width="36" height="36" rx="4" stroke="#64748b" stroke-width="1.5"/>
+        <path d="M14 24h20M14 16h20M14 32h12" stroke="#64748b" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <p>Results will appear here after running</p>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────────
+const imgs = { fo: null, dtl: null };
+const b64  = { fo: null, dtl: null };
+const mime = { fo: null, dtl: null };
+
+// ── FILE LOADING ───────────────────────────────────────────────────────────────
+function loadFile(e, view) {
+  const f = e.target.files[0];
+  if (!f) return;
+  readImg(f, view);
+}
+function doDrag(e, view) { e.preventDefault(); document.getElementById('dz-'+view).classList.add('drag'); }
+function undrag(view)     { document.getElementById('dz-'+view).classList.remove('drag'); }
+function doDrop(e, view)  { e.preventDefault(); undrag(view); const f=e.dataTransfer.files[0]; if(f) readImg(f,view); }
+
+function readImg(file, view) {
+  mime[view] = file.type || 'image/jpeg';
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const dataUrl = ev.target.result;
+    b64[view] = dataUrl.split(',')[1];
+    imgs[view] = dataUrl;
+    const thumb = document.getElementById('thumb-'+view);
+    thumb.src = dataUrl;
+    thumb.classList.add('show');
+    document.getElementById('dz-'+view).classList.add('loaded');
+    document.getElementById('dz-'+view+'-lbl').textContent = file.name;
+    checkReady();
+  };
+  reader.readAsDataURL(file);
+}
+
+function checkReady() {
+  document.getElementById('run-btn').disabled = !b64.fo;
+  if (b64.fo) setStatus('idle', 'Ready — click Run comparison');
+}
+
+function setStatus(state, txt) {
+  const dot = document.getElementById('s-dot');
+  dot.className = 's-dot' + (state==='running'?' running':state==='done'?' done':state==='err'?' err':'');
+  document.getElementById('s-txt').textContent = txt;
+}
+
+// ── MEDIAPIPE POSE ANALYSIS ───────────────────────────────────────────────────
+const L = { LS:11,RS:12,LE:13,RE:14,LW:15,RW:16, LH:23,RH:24,LK:25,RK:26,LA:27,RA:28, LHe:29,RHe:30,LF:31,RF:32 };
+const ok = (lm,i) => lm[i] && lm[i].visibility > 0.5;
+const a3 = (a,b,c) => { const v1={x:a.x-b.x,y:a.y-b.y},v2={x:c.x-b.x,y:c.y-b.y}; const dot=v1.x*v2.x+v1.y*v2.y,cross=Math.abs(v1.x*v2.y-v1.y*v2.x); return Math.round(Math.atan2(cross,dot)*180/Math.PI); };
+const tiltV = (a,b) => Math.round(Math.abs(a.y-b.y)/Math.abs(a.x-b.x)*100)/1;
+
+function runPoseOnImage(view) {
+  return new Promise((resolve) => {
+    const pose = new Pose({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
+    pose.setOptions({ modelComplexity:1, smoothLandmarks:false, minDetectionConfidence:0.5, minTrackingConfidence:0.5 });
+    pose.onResults(results => {
+      if (!results.poseLandmarks) { resolve(null); return; }
+      resolve(computeChecks(results.poseLandmarks, view));
+    });
+    const img = new Image();
+    img.onload = () => pose.send({ image: img });
+    img.src = imgs[view];
+  });
+}
+
+function computeChecks(lm, view) {
+  const R = {};
+  if (view === 'fo') {
+    // shoulder tilt
+    if (ok(lm,L.LS)&&ok(lm,L.RS)) {
+      const deg = Math.round(Math.abs(lm[L.LS].y-lm[L.RS].y)/Math.max(.001,Math.abs(lm[L.LS].x-lm[L.RS].x))*180/Math.PI);
+      const lHi = lm[L.LS].y < lm[L.RS].y;
+      R.shoulder_tilt = { d:`${deg}°`, s: lHi&&deg>=2&&deg<=8?'pass':deg<=12?'warn':'fail' };
+    }
+    // lead foot flare
+    const leadHe=ok(lm,L.RHe)?lm[L.RHe]:(ok(lm,L.RA)?lm[L.RA]:null);
+    const leadFt=ok(lm,L.RF)?lm[L.RF]:null;
+    if (leadHe&&leadFt) {
+      const dx=leadFt.x-leadHe.x;
+      const f=Math.round(Math.atan2(Math.max(0,dx),Math.max(.001,Math.abs(leadHe.y-leadFt.y)))*180/Math.PI);
+      R.lead_foot_flare = { d:`${f}°`, s:f>=20&&f<=35?'pass':f>=10&&f<=45?'warn':'fail' };
+    }
+    // trail foot flare
+    const trailHe=ok(lm,L.LHe)?lm[L.LHe]:(ok(lm,L.LA)?lm[L.LA]:null);
+    const trailFt=ok(lm,L.LF)?lm[L.LF]:null;
+    if (trailHe&&trailFt) {
+      const dx=trailHe.x-trailFt.x;
+      const f=Math.round(Math.atan2(Math.max(0,dx),Math.max(.001,Math.abs(trailHe.y-trailFt.y)))*180/Math.PI);
+      R.trail_foot_flare = { d:`${f}°`, s:f>=0&&f<=15?'pass':f<=25?'warn':'fail' };
+    }
+    // stance width
+    const lH=ok(lm,L.LHe)?lm[L.LHe]:(ok(lm,L.LA)?lm[L.LA]:null);
+    const rH=ok(lm,L.RHe)?lm[L.RHe]:(ok(lm,L.RA)?lm[L.RA]:null);
+    if (lH&&rH&&ok(lm,L.LS)&&ok(lm,L.RS)) {
+      const fw=Math.abs(lH.x-rH.x), sw=Math.abs(lm[L.LS].x-lm[L.RS].x);
+      if (sw>0.05) { const r=Math.round(fw/sw*100)/100; R.stance_width = { d:`${r}x`, s:r>=0.9&&r<=1.15?'pass':r>=0.7&&r<=1.3?'warn':'fail' }; }
+    }
+  }
+  if (view === 'dtl') {
+    // spine angle
+    const mS=ok(lm,L.LS)?lm[L.LS]:(ok(lm,L.RS)?lm[L.RS]:null);
+    const mH=ok(lm,L.LH)?lm[L.LH]:(ok(lm,L.RH)?lm[L.RH]:null);
+    const mA=ok(lm,L.LA)?lm[L.LA]:(ok(lm,L.RA)?lm[L.RA]:null);
+    if (mS&&mH) { const a=Math.round(Math.atan2(Math.abs(mS.x-mH.x),Math.max(.001,Math.abs(mS.y-mH.y)))*180/Math.PI); R.spine_angle = { d:`${a}°`, s:a>=35&&a<=45?'pass':a>=28&&a<=55?'warn':'fail' }; }
+    // hip hinge (DTL only) — ankle.x - hip.x positive = backside behind heels (trail-side camera)
+    if (mH&&mA) {
+      const o=mA.x-mH.x;
+      R.hip_hinge = { d:o>0.06?'good':o>0.02?'barely':'fwd', s:o>0.06?'pass':o>0.02?'warn':'fail' };
+    }
+    // trail elbow
+    const rOk=ok(lm,L.RS)&&ok(lm,L.RE)&&ok(lm,L.RW);
+    const lOk=ok(lm,L.LS)&&ok(lm,L.LE)&&ok(lm,L.LW);
+    if (rOk) { const a=a3(lm[L.RS],lm[L.RE],lm[L.RW]); R.trail_elbow = { d:`${a}°`, s:a>=150?'pass':a>=120?'warn':'fail' }; }
+    else if (lOk) { const a=a3(lm[L.LS],lm[L.LE],lm[L.LW]); R.trail_elbow = { d:`${a}°`, s:a>=150?'pass':a>=120?'warn':'fail' }; }
+    // knee flex
+    if (ok(lm,L.LH)&&ok(lm,L.LK)&&ok(lm,L.LA)) { const f=180-a3(lm[L.LH],lm[L.LK],lm[L.LA]); R.lead_knee_flex = { d:`${f}°`, s:f>=12&&f<=28?'pass':f>=8&&f<=38?'warn':'fail' }; }
+    if (ok(lm,L.RH)&&ok(lm,L.RK)&&ok(lm,L.RA)) { const f=180-a3(lm[L.RH],lm[L.RK],lm[L.RA]); R.trail_knee_flex = { d:`${f}°`, s:f>=12&&f<=28?'pass':f>=8&&f<=38?'warn':'fail' }; }
+  }
+  return R;
+}
+
+// ── API CALL ──────────────────────────────────────────────────────────────────
+async function callApi() {
+  const base = document.getElementById('api-url').value.replace(/\/$/, '');
+  const hand = document.getElementById('sel-hand').value;
+  const club = document.getElementById('sel-club').value;
+  let endpoint, body;
+  if (b64.fo && b64.dtl) {
+    endpoint = '/analyse';
+    body = { faceOn:b64.fo, faceOnMediaType:mime.fo, dtl:b64.dtl, dtlMediaType:mime.dtl, handedness:hand, club };
+  } else {
+    endpoint = '/analyse/face-on';
+    body = { image:b64.fo, mediaType:mime.fo, handedness:hand, club };
+  }
+  const res = await fetch(base+endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+// ── MAIN RUNNER ───────────────────────────────────────────────────────────────
+async function runComparison() {
+  document.getElementById('run-btn').disabled = true;
+  setStatus('running', 'Running API analysis...');
+
+  let apiResult, poseResultFo=null, poseResultDtl=null;
+
+  try {
+    apiResult = await callApi();
+  } catch(e) {
+    setStatus('err', 'API error: '+e.message);
+    document.getElementById('run-btn').disabled = false;
+    return;
+  }
+
+  setStatus('running', 'Running MediaPipe pose analysis...');
+  try {
+    poseResultFo = await runPoseOnImage('fo');
+    if (b64.dtl) poseResultDtl = await runPoseOnImage('dtl');
+  } catch(e) {
+    setStatus('err', 'Pose error: '+e.message);
+    document.getElementById('run-btn').disabled = false;
+    return;
+  }
+
+  setStatus('done', 'Done');
+  document.getElementById('run-btn').disabled = false;
+  renderResults(apiResult, poseResultFo, poseResultDtl);
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+const OVERLAP = [
+  { id:'shoulder_tilt',   name:'Shoulder tilt',   view:'fo',  range:'2–8°' },
+  { id:'lead_foot_flare', name:'Lead foot flare',  view:'fo',  range:'20–35°' },
+  { id:'trail_foot_flare',name:'Trail foot flare', view:'fo',  range:'0–15°' },
+  { id:'stance_width',    name:'Stance width',     view:'fo',  range:'0.9–1.15x' },
+  { id:'spine_angle',     name:'Spine angle',      view:'dtl', range:'35–45°' },
+  { id:'hip_hinge',       name:'Hip hinge',        view:'dtl', range:'behind heels' },
+  { id:'trail_elbow',     name:'Trail elbow',      view:'dtl', range:'≥150°' },
+  { id:'lead_knee_flex',  name:'Lead knee flex',   view:'dtl', range:'12–28°' },
+  { id:'trail_knee_flex', name:'Trail knee flex',  view:'dtl', range:'12–28°' },
+];
+
+function pillHtml(s) {
+  if (!s||s==='not_assessed'||s==='low_visibility') return `<span class="status-pill pill-none">${s||'—'}</span>`;
+  if (s==='pass') return `<span class="status-pill pill-pass">pass</span>`;
+  if (s==='warn') return `<span class="status-pill pill-warn">warn</span>`;
+  if (s==='fail') return `<span class="status-pill pill-fail">fail</span>`;
+  return `<span class="status-pill pill-none">${s}</span>`;
+}
+
+function diffClass(apiS, poseS) {
+  if (!apiS||!poseS) return 'diff-na';
+  if (apiS===poseS) return 'diff-agree';
+  // one step apart
+  const order=['pass','warn','fail'];
+  const ai=order.indexOf(apiS), pi=order.indexOf(poseS);
+  if (ai>=0&&pi>=0&&Math.abs(ai-pi)===1) return 'diff-close';
+  if (ai>=0&&pi>=0&&Math.abs(ai-pi)===2) return 'diff-far';
+  return 'diff-off';
+}
+function diffLabel(apiS, poseS) {
+  if (!apiS&&!poseS) return '—';
+  if (!apiS||!poseS)  return 'API only';
+  if (apiS===poseS) return 'agree';
+  return `${apiS} / ${poseS}`;
+}
+
+function renderResults(apiData, poseFo, poseDtl) {
+  const checks = apiData.checks || [];
+  const apiMap = {};
+  checks.forEach(c => { apiMap[c.check_id] = c; });
+  const poseMap = { ...(poseFo||{}), ...(poseDtl||{}) };
+
+  // tally
+  let agree=0,close=0,off=0,far=0;
+  OVERLAP.forEach(o=>{
+    const ac=apiMap[o.id]; const pc=poseMap[o.id];
+    if (!ac||!pc) return;
+    const cl=diffClass(ac.status,pc.s);
+    if(cl==='diff-agree') agree++;
+    else if(cl==='diff-close') close++;
+    else if(cl==='diff-off') off++;
+    else if(cl==='diff-far') far++;
+  });
+
+  // API-only checks (not in OVERLAP)
+  const apiOnly = checks.filter(c => !OVERLAP.find(o=>o.id===c.check_id) && c.status!=='info' && c.status!=='not_assessed');
+
+  let html = `
+    <div class="results-header">
+      <h2>Comparison results</h2>
+      <div class="legend">
+        <div class="leg"><div class="leg-dot" style="background:var(--green)"></div>agree</div>
+        <div class="leg"><div class="leg-dot" style="background:var(--blue)"></div>1 step</div>
+        <div class="leg"><div class="leg-dot" style="background:var(--amber)"></div>off</div>
+        <div class="leg"><div class="leg-dot" style="background:var(--red)"></div>far</div>
+      </div>
+    </div>
+    <div class="summary-bar">
+      <div class="sum-card c-agree"><div class="sum-n">${agree}</div><div class="sum-lbl">agree</div></div>
+      <div class="sum-card c-close"><div class="sum-n">${close}</div><div class="sum-lbl">1 step apart</div></div>
+      <div class="sum-card c-off"><div class="sum-n">${off}</div><div class="sum-lbl">off</div></div>
+      <div class="sum-card c-far"><div class="sum-n">${far}</div><div class="sum-lbl">far apart</div></div>
+    </div>
+
+    <table class="diff-table">
+      <thead>
+        <tr>
+          <th style="width:180px">Check</th>
+          <th class="center" style="width:100px">API result</th>
+          <th class="center" style="width:80px">API val</th>
+          <th class="center" style="width:100px">Pose result</th>
+          <th class="center" style="width:80px">Pose val</th>
+          <th class="center" style="width:90px">Diff</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+  // FO section
+  html += `<tr><td colspan="6" class="section-head">Face-on checks</td></tr>`;
+  OVERLAP.filter(o=>o.view==='fo').forEach(o => {
+    const ac = apiMap[o.id];
+    const pc = poseMap[o.id];
+    const dc = diffClass(ac?.status, pc?.s);
+    const dl = diffLabel(ac?.status, pc?.s);
+    const apiMv = ac?.measured_value || '—';
+    html += `<tr>
+      <td><div class="check-name">${o.name}</div><div class="check-view">FO · ${o.range}</div></td>
+      <td class="center">${pillHtml(ac?.status)}</td>
+      <td class="center"><span class="val${!ac?'none':''}">${apiMv}</span></td>
+      <td class="center">${pillHtml(pc?.s)}</td>
+      <td class="center"><span class="val${!pc?'none':''}">${pc?.d||'—'}</span></td>
+      <td class="diff-cell"><span class="diff-badge ${dc}">${dl}</span></td>
+    </tr>`;
+  });
+
+  // DTL section
+  if (b64.dtl) {
+    html += `<tr><td colspan="6" class="section-head">Down-the-line checks</td></tr>`;
+    OVERLAP.filter(o=>o.view==='dtl').forEach(o => {
+      const ac = apiMap[o.id];
+      const pc = poseMap[o.id];
+      const dc = diffClass(ac?.status, pc?.s);
+      const dl = diffLabel(ac?.status, pc?.s);
+      const apiMv = ac?.measured_value || '—';
+      html += `<tr>
+        <td><div class="check-name">${o.name}</div><div class="check-view">DTL · ${o.range}</div></td>
+        <td class="center">${pillHtml(ac?.status)}</td>
+        <td class="center"><span class="val${!ac?'none':''}">${apiMv}</span></td>
+        <td class="center">${pillHtml(pc?.s)}</td>
+        <td class="center"><span class="val${!pc?'none':''}">${pc?.d||'—'}</span></td>
+        <td class="diff-cell"><span class="diff-badge ${dc}">${dl}</span></td>
+      </tr>`;
+    });
+  }
+
+  html += `</tbody></table>`;
+
+  // API-only checks
+  if (apiOnly.length) {
+    html += `<div style="margin-top:24px; margin-bottom:8px;">
+      <div class="section-title">API-only checks (no pose equivalent)</div>
+    </div>`;
+    apiOnly.forEach(c => {
+      html += `<div class="api-only">
+        <span>${c.check_name} <span style="color:var(--slate);font-size:10px;margin-left:6px">${c.view}</span></span>
+        <span>${pillHtml(c.status)} <span class="val" style="margin-left:8px">${c.measured_value||''}</span></span>
+      </div>`;
+    });
+  }
+
+  document.getElementById('results').innerHTML = html;
+}
+</script>
+</body>
+</html>
