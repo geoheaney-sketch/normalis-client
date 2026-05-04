@@ -528,6 +528,17 @@ input[type=file]{display:none;}
   gap:8px;
 }
 
+.btn-export{
+  grid-column:1/-1;
+  padding:13px;background:var(--bg2);color:var(--blue);
+  border:1px solid var(--blue);border-radius:10px;
+  font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;
+  cursor:pointer;transition:background .15s,opacity .15s;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+}
+.btn-export:hover{background:var(--bg3);}
+.btn-export:active{opacity:.75;}
+
 .btn-sec{
   padding:13px;background:var(--bg2);color:var(--text);
   border:1px solid var(--border-light);border-radius:10px;
@@ -866,6 +877,12 @@ input[type=file]{display:none;}
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8L7 3l5 5v4.5a.5.5 0 01-.5.5H9V10H5v2H2.5a.5.5 0 01-.5-.5V8z"/></svg>
         Home
       </button>
+      <button class="btn-export" onclick="exportPDF()">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7 1v8M4 6l3 3 3-3"/><path d="M2 10v1.5A1.5 1.5 0 003.5 13h7a1.5 1.5 0 001.5-1.5V10"/>
+        </svg>
+        Export PDF report
+      </button>
     </div>
   </div>
 </div>
@@ -981,6 +998,7 @@ const state = {
   hand: 'right',
   photos: { fo: null, dtl: null },
   sessions: [],
+  lastResult: null,  // { checks, summary, timestamp } — populated on each analysis
 };
 
 // ── Check metadata (spec v1.1 names) ─────────────────────────────────────────
@@ -1303,6 +1321,7 @@ function normaliseChecks(checks) {
 
 // ══ RESULTS ═══════════════════════════════════════════════════════════════════
 function renderResults(checks, summary) {
+  state.lastResult = { checks, summary, timestamp: new Date() };
   const total   = checks.length;
   const passes  = checks.filter(c=>c.status==='pass').length;
   const fails   = checks.filter(c=>c.status==='fail').length;
@@ -1361,6 +1380,243 @@ function toast(msg) {
 
 // ══ INIT ══════════════════════════════════════════════════════════════════════
 // Start on login screen (already default)
+</script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script>
+// ══ EXPORT PDF ════════════════════════════════════════════════════════════════
+function exportPDF() {
+  if (!state.lastResult) { toast('No results to export yet'); return; }
+  const { checks, summary, timestamp } = state.lastResult;
+  const { jsPDF } = window.jspdf;
+
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  const PW  = doc.internal.pageSize.getWidth();   // 595
+  const PH  = doc.internal.pageSize.getHeight();  // 842
+  const M   = 40;  // margin
+
+  // ── Colours (RGB arrays) ────────────────────────────────────────────────────
+  const BG1   = [10,13,18];
+  const BG2   = [17,21,32];
+  const BG3   = [26,31,46];
+  const BLUE  = [96,165,250];
+  const GREEN = [34,197,94];
+  const AMBER = [245,158,11];
+  const RED   = [239,68,68];
+  const SLATE = [100,116,139];
+  const TEXT  = [226,232,240];
+  const MUTED = [100,116,139];
+  const ORANGE= [251,146,60];
+
+  const statusCol   = s => s==='pass'?GREEN : s==='warn'?AMBER : s==='fail'?RED : SLATE;
+  const statusLabel = s => (s||'').toUpperCase() || '—';
+  const dim = c => c.map(v => Math.max(0, Math.round(v * 0.18)));
+
+  // tallies
+  const total  = checks.length;
+  const passes = checks.filter(c=>c.status==='pass').length;
+  const warns  = checks.filter(c=>c.status==='warn').length;
+  const fails  = checks.filter(c=>c.status==='fail').length;
+  const pct    = total ? Math.round(passes/total*100) : 0;
+  const grade  = fails>0?'fail':passes===total?'pass':'warn';
+
+  // ── Full-page dark background ───────────────────────────────────────────────
+  doc.setFillColor(...BG1);
+  doc.rect(0, 0, PW, PH, 'F');
+
+  // ── Header band ────────────────────────────────────────────────────────────
+  doc.setFillColor(...BG2);
+  doc.rect(0, 0, PW, 106, 'F');
+
+  // Logo circle
+  doc.setDrawColor(...BLUE);
+  doc.setLineWidth(1.2);
+  doc.circle(M+12, 38, 12, 'S');
+  doc.line(M+12, 26, M+12, 50);
+  doc.line(M+4,  32, M+20, 44);
+
+  // Wordmark
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(...MUTED);
+  doc.text('NORMALIS', M+32, 34);
+
+  // Report title
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(19);
+  doc.setTextColor(...TEXT);
+  doc.text('Address Analysis Report', M+32, 56);
+
+  // Meta line
+  const ts = timestamp.toLocaleString('en-GB', {
+    day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'
+  });
+  const userLabel = state.user?.name || state.user?.email || '';
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(...MUTED);
+  doc.text(`${ts}${userLabel ? '   ·   ' + userLabel : ''}`, M+32, 72);
+
+  // Hand indicator
+  const handStr = (state.hand === 'right' ? 'Right-handed' : 'Left-handed');
+  doc.text(handStr, M+32, 86);
+
+  // ── Score summary tiles ─────────────────────────────────────────────────────
+  let y = 120;
+  const tileW = (PW - M*2 - 16) / 4;
+  const tiles = [
+    { label:'SCORE',  val:`${pct}%`,      col: pct>=70?GREEN:pct>=40?AMBER:RED },
+    { label:'PASS',   val:String(passes), col: GREEN },
+    { label:'WARN',   val:String(warns),  col: AMBER },
+    { label:'FAIL',   val:String(fails),  col: RED   },
+  ];
+  tiles.forEach((t, i) => {
+    const x = M + i*(tileW+6);
+    doc.setFillColor(...BG3);
+    doc.roundedRect(x, y, tileW, 52, 5, 5, 'F');
+    // colour accent bar left
+    doc.setFillColor(...t.col);
+    doc.roundedRect(x, y, 4, 52, 2, 2, 'F');
+    // big number
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(24);
+    doc.setTextColor(...t.col);
+    doc.text(t.val, x + tileW/2, y + 30, { align:'center' });
+    // label
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(...MUTED);
+    doc.text(t.label, x + tileW/2, y + 44, { align:'center' });
+  });
+
+  // ── Verdict line ────────────────────────────────────────────────────────────
+  y += 66;
+  const gradeTitles = { pass:'Setup looks solid', warn:'Setup needs some work', fail:'Setup has key faults' };
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(...statusCol(grade));
+  doc.text(gradeTitles[grade], M, y);
+
+  const summaryText = typeof summary === 'string' ? summary : '';
+  if (summaryText) {
+    y += 14;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...MUTED);
+    const lines = doc.splitTextToSize(summaryText, PW - M*2);
+    doc.text(lines, M, y);
+    y += lines.length * 11;
+  }
+
+  // ── Checks table ────────────────────────────────────────────────────────────
+  y += 14;
+
+  // Column x positions
+  const COL = { view:M, name:M+52, range:M+220, val:M+370, status:M+450 };
+  const ROW_H = 30;
+
+  // Table header
+  doc.setFillColor(...BG3);
+  doc.rect(M, y, PW-M*2, 18, 'F');
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(...MUTED);
+  ['VIEW','CHECK','TARGET RANGE','MEASURED','STATUS'].forEach((h,i) => {
+    doc.text(h, Object.values(COL)[i], y+12);
+  });
+  y += 22;
+
+  // Sort: fail → warn → pass (matches on-screen order)
+  const order = { fail:0, warn:1, pass:2 };
+  const sorted = [...checks].sort((a,b)=>(order[a.status]??3)-(order[b.status]??3));
+
+  sorted.forEach((c, idx) => {
+    // page break
+    if (y + ROW_H > PH - 50) {
+      doc.addPage();
+      doc.setFillColor(...BG1);
+      doc.rect(0,0,PW,PH,'F');
+      y = M;
+    }
+
+    const even = idx%2===0;
+    doc.setFillColor(...(even?BG2:BG1));
+    doc.rect(M, y, PW-M*2, ROW_H, 'F');
+
+    // view pill
+    const viewCol = c.view==='fo'?ORANGE:c.view==='dtl'?BLUE:SLATE;
+    const viewLbl = c.view==='fo'?'FO':c.view==='dtl'?'DTL':'—';
+    doc.setFillColor(...dim(viewCol));
+    doc.roundedRect(COL.view, y+8, 28, 13, 3, 3, 'F');
+    doc.setFont('courier','bold');
+    doc.setFontSize(6);
+    doc.setTextColor(...viewCol);
+    doc.text(viewLbl, COL.view+14, y+17.5, { align:'center' });
+
+    // check name
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...TEXT);
+    doc.text(c.name||c.id||'', COL.name, y+17.5, { maxWidth:160 });
+
+    // target range
+    doc.setFont('courier','normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...MUTED);
+    doc.text(c.range||'—', COL.range, y+17.5, { maxWidth:140 });
+
+    // measured value
+    doc.setFont('courier','bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...TEXT);
+    doc.text(c.value||'—', COL.val, y+17.5);
+
+    // status pill
+    const sCo = statusCol(c.status);
+    doc.setFillColor(...dim(sCo));
+    doc.roundedRect(COL.status, y+7, 44, 15, 3, 3, 'F');
+    doc.setFont('courier','bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(...sCo);
+    doc.text(statusLabel(c.status), COL.status+22, y+17.5, { align:'center' });
+
+    // coaching note (smaller, below, if present)
+    if (c.note) {
+      y += ROW_H;
+      if (y + 18 > PH - 50) {
+        doc.addPage();
+        doc.setFillColor(...BG1);
+        doc.rect(0,0,PW,PH,'F');
+        y = M;
+      }
+      doc.setFillColor(...(even?BG2:BG1));
+      doc.rect(M, y, PW-M*2, 18, 'F');
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(...MUTED);
+      const noteLines = doc.splitTextToSize(c.note, PW - M*2 - 60);
+      doc.text(noteLines, COL.name, y+12);
+      y += Math.max(0, (noteLines.length-1)*9);
+    }
+
+    y += ROW_H;
+  });
+
+  // ── Footer ──────────────────────────────────────────────────────────────────
+  // Draw on last page
+  const footY = PH - 26;
+  doc.setDrawColor(...BG3);
+  doc.setLineWidth(0.5);
+  doc.line(M, footY-8, PW-M, footY-8);
+  doc.setFont('courier','normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(...MUTED);
+  doc.text('Normalis — Golf Biomechanics Analysis', M, footY);
+  doc.text(`Generated ${ts}`, PW-M, footY, { align:'right' });
+
+  // ── Save ────────────────────────────────────────────────────────────────────
+  const dateStr = timestamp.toISOString().slice(0,10);
+  doc.save(`normalis-report-${dateStr}.pdf`);
+}
 </script>
 </body>
 </html>
