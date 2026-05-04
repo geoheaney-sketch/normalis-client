@@ -1313,7 +1313,7 @@ function normaliseChecks(checks) {
       value:   c.measured_value || c.value || '',
       range:   c.ideal_range    || c.range || '',
       note:    c.coaching_note  || c.note  || '',
-      view:    c.view           || meta.view || '',
+      view:    (c.view === 'face_on' ? 'fo' : c.view) || meta.view || '',
       arm:     meta.arm         || 'neutral',
     };
   });
